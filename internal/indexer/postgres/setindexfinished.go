@@ -19,6 +19,15 @@ func setScanFinished(ctx context.Context, db *sqlx.DB, sr *claircore.IndexReport
 		  AND version = $2
 		  AND kind = $3;
 		`
+		deleteManifestScanned = `
+		WITH manifests AS (
+			SELECT id AS manifest_id
+			FROM manifest
+			WHERE hash = $1
+		)
+		DELETE FROM scanned_manifest
+		WHERE manifest_id = (SELECT manifest_id FROM manifests);
+		`
 		insertManifestScanned = `
 		WITH manifests AS (
 			SELECT id AS manifest_id
@@ -57,6 +66,13 @@ func setScanFinished(ctx context.Context, db *sqlx.DB, sr *claircore.IndexReport
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("store:setScannerList failed to create transaction for hash %v: %v", sr.Hash, err)
+	}
+
+	// if manifest was scanned before by different set of scanners, delete the old entries
+	_, err = tx.Exec(deleteManifestScanned, sr.Hash)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("store:storeManifest failed to delete existing entries for hash %v: %v", sr.Hash, err)
 	}
 
 	// link extracted scanner IDs with incoming manifest
