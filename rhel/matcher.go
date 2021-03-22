@@ -2,6 +2,7 @@ package rhel
 
 import (
 	"context"
+	"strings"
 
 	version "github.com/knqyf263/go-rpm-version"
 
@@ -44,8 +45,15 @@ func (m *Matcher) Vulnerable(ctx context.Context, record *claircore.IndexRecord,
 	if vuln.FixedInVersion != "" {
 		vulnVer = version.NewVersion(vuln.FixedInVersion)
 		cmp = func(i int) bool { return i == version.LESS }
+		// There are two situations where vulnerability might miss FixedInVersion
 	} else {
-		// If a vulnerability doesn't have FixedInVersion, assume it is unfixed.
+		// OVAL data includes so-called unaffected vulnerabilities.
+		// They are there to confirm that given package is not affected by a known CVE.
+		if strings.Split(vuln.Name, " ")[0] == "Unaffected" {
+			// TODO: This is probably incorrect. I also need to compare arch.
+			return false, nil
+		}
+		// Otherwise we assume that the vulnerability hasn't been fixed.
 		vulnVer = version.NewVersion("65535:0")
 	}
 	// compare version and architecture
